@@ -5,17 +5,29 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, FileText, Target, TrendingUp, MessageSquare, ExternalLink } from "lucide-react"
+import { Upload, FileText, Target, TrendingUp, MessageSquare, ExternalLink, AlertCircle, CheckCircle } from "lucide-react"
 import ATSAnalyzerModal from "@/components/feature-modals/ats-analyzer-modal"
 import ResumeTailorModal from "@/components/feature-modals/resume-tailor-modal"
 import OpportunityFinderModal from "@/components/feature-modals/opportunity-finder-modal"
+import { useResumeUpload } from "@/lib/hooks/useResumeUpload"
 import CareerCounselingModal from "@/components/feature-modals/career-counseling-modal"
 
 export default function FeaturesSection() {
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [hasUploadedResume, setHasUploadedResume] = useState(false)
   const [cardsVisible, setCardsVisible] = useState(false)
   const [activeModal, setActiveModal] = useState<string | null>(null)
+  
+  // Use the resume upload hook
+  const {
+    isUploading,
+    uploadError,
+    uploadProgress,
+    uploadedResume,
+    uploadResume,
+    clearUpload,
+    resetError
+  } = useResumeUpload()
+  
+  const hasUploadedResume = !!uploadedResume
 
   useEffect(() => {
     // Trigger staggered card animations on mount
@@ -25,20 +37,16 @@ export default function FeaturesSection() {
     return () => clearTimeout(timer)
   }, [])
 
-  const handleResumeUpload = () => {
-    // Simulate file upload
+  const handleResumeUpload = async () => {
     const input = document.createElement("input")
     input.type = "file"
     input.accept = ".pdf,.docx"
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (file) {
-        setIsAnalyzing(true)
-        // Simulate analysis with progress
-        setTimeout(() => {
-          setIsAnalyzing(false)
-          setHasUploadedResume(true)
-          // Trigger card animations
+        try {
+          await uploadResume(file)
+          // Trigger card animations after successful upload
           const cards = document.querySelectorAll(".feature-card")
           cards.forEach((card, index) => {
             setTimeout(() => {
@@ -48,7 +56,9 @@ export default function FeaturesSection() {
               }, 1000)
             }, index * 200)
           })
-        }, 3000)
+        } catch (error) {
+          console.error('Upload failed:', error)
+        }
       }
     }
     input.click()
@@ -82,17 +92,66 @@ export default function FeaturesSection() {
               onClick={handleResumeUpload}
               size="lg"
               className="text-lg px-8 py-6 hover-lift hover-glow animate-fade-in-up animation-delay-200"
-              disabled={isAnalyzing}
+              disabled={isUploading}
             >
               <Upload className="w-5 h-5 mr-2" />
-              {isAnalyzing ? "Analyzing Your Resume..." : "Upload Your Resume"}
+              {isUploading ? "Processing Your Resume..." : "Upload Your Resume"}
             </Button>
-            {isAnalyzing && (
+            
+            {/* Upload Status */}
+            {isUploading && (
               <div className="mt-6 animate-fade-in-scale">
-                <div className="w-64 mx-auto bg-secondary rounded-full h-3 overflow-hidden">
-                  <div className="bg-primary h-3 rounded-full animate-shimmer" style={{ width: "60%" }} />
+                <div className="flex items-center justify-center space-x-2 text-muted-foreground">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  <span>Extracting text from your resume... {uploadProgress}%</span>
                 </div>
-                <p className="text-sm text-muted-foreground mt-3">AI is analyzing your resume...</p>
+                <div className="w-64 mx-auto mt-2 bg-muted/20 rounded-full h-2">
+                  <div 
+                    className="bg-primary h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+            
+            {/* Upload Error */}
+            {uploadError && (
+              <div className="mt-6 animate-fade-in-scale">
+                <div className="flex items-center justify-center space-x-2 text-red-500 bg-red-50 dark:bg-red-950/20 p-3 rounded-lg max-w-md mx-auto">
+                  <AlertCircle className="w-5 h-5" />
+                  <span className="text-sm">{uploadError}</span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={resetError}
+                    className="text-red-500 hover:text-red-600 p-1 h-auto"
+                  >
+                    ×
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {/* Upload Success */}
+            {uploadedResume && (
+              <div className="mt-6 animate-fade-in-scale">
+                <div className="flex items-center justify-center space-x-2 text-green-600 bg-green-50 dark:bg-green-950/20 p-4 rounded-lg max-w-2xl mx-auto">
+                  <CheckCircle className="w-5 h-5" />
+                  <div className="text-left">
+                    <div className="font-medium">Resume uploaded successfully!</div>
+                    <div className="text-sm text-muted-foreground">
+                      {uploadedResume.word_count} words extracted from {uploadedResume.file_name}
+                    </div>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={clearUpload}
+                    className="text-green-600 hover:text-green-700 p-1 h-auto"
+                  >
+                    ×
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -159,8 +218,16 @@ export default function FeaturesSection() {
         </div>
       </section>
 
-      <ATSAnalyzerModal isOpen={activeModal === "ats"} onClose={closeModal} />
-      <ResumeTailorModal isOpen={activeModal === "tailor"} onClose={closeModal} />
+      <ATSAnalyzerModal 
+        isOpen={activeModal === "ats"} 
+        onClose={closeModal} 
+        uploadedResumeText={uploadedResume?.extracted_text}
+      />
+      <ResumeTailorModal 
+        isOpen={activeModal === "tailor"} 
+        onClose={closeModal} 
+        uploadedResumeText={uploadedResume?.extracted_text}
+      />
       <OpportunityFinderModal isOpen={activeModal === "opportunities"} onClose={closeModal} />
       <CareerCounselingModal isOpen={activeModal === "counseling"} onClose={closeModal} />
     </>

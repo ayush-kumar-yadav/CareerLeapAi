@@ -10,14 +10,15 @@ import { X, Lightbulb, ArrowRight, Copy, Check } from "lucide-react"
 interface ResumeTailorModalProps {
   isOpen: boolean
   onClose: () => void
+  uploadedResumeText?: string
 }
 
-export default function ResumeTailorModal({ isOpen, onClose }: ResumeTailorModalProps) {
+export default function ResumeTailorModal({ isOpen, onClose, uploadedResumeText }: ResumeTailorModalProps) {
   const [copiedSuggestion, setCopiedSuggestion] = useState<number | null>(null)
 
   const mockJobDescription = `We are seeking a Software Engineer Intern to join our dynamic development team. The ideal candidate will have experience with React, Node.js, and modern web development practices. You'll work on building scalable web applications, collaborating with cross-functional teams, and contributing to our API development efforts. Knowledge of database systems, Agile methodologies, and version control (Git) is highly valued.`
 
-  const mockCurrentResume = `John Doe
+  const currentResumeText = uploadedResumeText || `John Doe
 Software Engineering Student
 
 Experience:
@@ -123,10 +124,10 @@ Skills:
               </CardHeader>
               <CardContent>
                 <div className="relative">
-                  <Textarea value={mockCurrentResume} readOnly className="min-h-[200px] text-sm resize-none" />
+                  <Textarea value={currentResumeText} readOnly className="min-h-[200px] text-sm resize-none" />
                   <div className="absolute top-2 right-2">
                     <Badge variant="secondary" className="text-xs">
-                      Original
+                      {uploadedResumeText ? "Uploaded" : "Sample"}
                     </Badge>
                   </div>
                 </div>

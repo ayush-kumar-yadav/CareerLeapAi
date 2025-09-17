@@ -9,9 +9,10 @@ import { X, CheckCircle, AlertTriangle, XCircle, TrendingUp } from "lucide-react
 interface ATSAnalyzerModalProps {
   isOpen: boolean
   onClose: () => void
+  uploadedResumeText?: string
 }
 
-export default function ATSAnalyzerModal({ isOpen, onClose }: ATSAnalyzerModalProps) {
+export default function ATSAnalyzerModal({ isOpen, onClose, uploadedResumeText }: ATSAnalyzerModalProps) {
   const [currentScore] = useState(88)
 
   const mockInsights = [

@@ -5,6 +5,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export interface ResumeUploadResponse {
+  resume_id: number;
   extracted_text: string;
   file_name: string;
   file_size: number;
@@ -91,18 +92,31 @@ class ApiService {
    * Fetch all resumes for the demo user
    */
   async getResumes(): Promise<Array<{
-    resume_id: string | number
+    id: number
+    user_id?: number
+    file_name?: string | null
+    file_type?: string | null
+    file_size?: number | null
     created_at?: string
-    resume_text?: string
   }>> {
-    return this.request('/api/v1/resumes');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const resp = await this.request<{ resumes: Array<any> }>(
+      '/api/v1/resumes',
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      }
+    );
+    return resp.resumes || [];
   }
 
   /**
    * Fetch analysis for a resume by id
    */
   async getResumeAnalysis(resumeId: string | number): Promise<any> {
-    return this.request(`/api/v1/analysis/${resumeId}`);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return this.request(`/api/v1/analysis/${resumeId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
   }
 
   /**
@@ -112,9 +126,11 @@ class ApiService {
     const formData = new FormData();
     formData.append('file', file);
 
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const response = await fetch(`${this.baseURL}/api/v1/upload-resume`, {
       method: 'POST',
       body: formData,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
 
     if (!response.ok) {
@@ -129,9 +145,11 @@ class ApiService {
    * Analyze resume text
    */
   async analyzeResume(data: ResumeAnalysisRequest): Promise<ResumeAnalysisResponse> {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     return this.request<ResumeAnalysisResponse>('/api/v1/analyze-resume', {
       method: 'POST',
       body: JSON.stringify(data),
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
   }
 

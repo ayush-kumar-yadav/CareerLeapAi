@@ -1,112 +1,69 @@
 // Authentication utilities for CareerLeap AI
-// Integrates with FastAPI backend and Emergent authentication service
+// Refactored to use FastAPI JWT endpoints; removed Emergent SSO
 
-export interface User {
-  id: string
-  name: string
+export interface CurrentUser {
+  id: number
   email: string
-  createdAt: string
+  created_at: string
 }
 
-export interface AuthResponse {
-  success: boolean
-  user?: User
-  error?: string
+export interface TokenResponse {
+  access_token: string
+  token_type: string
 }
 
 // API base URL - adjust based on your backend deployment
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
-/**
- * Redirect user to Emergent authentication page
- */
-export const redirectToAuth = (mode: "login" | "signup" = "signup") => {
-  const redirectUri = encodeURIComponent(`${window.location.origin}/auth/callback`)
-  const emergentAuthUrl = `${API_BASE_URL}/api/auth/emergent?redirect_uri=${redirectUri}&mode=${mode}`
-  window.location.href = emergentAuthUrl
-}
-
-/**
- * Handle authentication callback from Emergent
- */
-export const handleAuthCallback = async (sessionData: any): Promise<AuthResponse> => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/session-data`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      credentials: "include", // Important for HTTPOnly cookies
-      body: JSON.stringify(sessionData),
-    })
-
-    if (!response.ok) {
-      throw new Error("Authentication failed")
-    }
-
-    const data = await response.json()
-    return {
-      success: true,
-      user: data.user,
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Authentication failed",
-    }
+export const register = async (email: string, password: string): Promise<CurrentUser> => {
+  const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || "Registration failed")
   }
+  return res.json()
 }
 
-/**
- * Get current authenticated user
- */
-export const getCurrentUser = async (): Promise<AuthResponse> => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-      method: "GET",
-      credentials: "include", // Important for HTTPOnly cookies
-    })
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        return { success: false, error: "Not authenticated" }
-      }
-      throw new Error("Failed to get user data")
-    }
-
-    const data = await response.json()
-    return {
-      success: true,
-      user: data.user,
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to get user data",
-    }
+export const login = async (email: string, password: string): Promise<TokenResponse> => {
+  const form = new URLSearchParams()
+  // FastAPI OAuth2PasswordRequestForm expects 'username' and 'password'
+  form.append("username", email)
+  form.append("password", password)
+  const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || "Login failed")
   }
+  return res.json()
 }
 
-/**
- * Logout user
- */
-export const logout = async (): Promise<{ success: boolean }> => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    })
-
-    return { success: response.ok }
-  } catch (error) {
-    return { success: false }
+export const getCurrentUser = async (token: string): Promise<CurrentUser> => {
+  const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (res.status === 401) {
+    throw new Error("Not authenticated")
   }
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || "Failed to fetch user")
+  }
+  return res.json()
 }
 
-/**
- * Check if user is authenticated (client-side check)
- */
-export const isAuthenticated = async (): Promise<boolean> => {
-  const result = await getCurrentUser()
-  return result.success
+export const logout = (): void => {
+  try {
+    localStorage.removeItem("token")
+  } catch (_) {
+    // no-op
+  }
 }

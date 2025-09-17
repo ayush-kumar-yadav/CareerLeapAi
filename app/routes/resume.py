@@ -260,3 +260,76 @@ async def get_resume_analysis(resume_id: int, db: Session = Depends(get_db), htt
 
     return ResumeStoredAnalysisResponse(resume_id=resume_id, analysis=stored)
 
+
+@router.delete("/resumes/{resume_id}")
+async def delete_resume(resume_id: int, db: Session = Depends(get_db), http_request: Request = None):
+    """Delete a resume owned by the current user. Also attempts to remove the stored file if available."""
+    user = get_current_user_from_request(http_request, db)
+    resume = crud.get_resume(db, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Best-effort: remove file from uploads directory if a name exists
+    try:
+        upload_dir = os.getenv("UPLOAD_DIR", "uploads")
+        if resume.file_name:
+            file_path = os.path.join(upload_dir, resume.file_name)
+            if os.path.isfile(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    # Non-fatal
+                    pass
+    except Exception:
+        # Non-fatal
+        pass
+
+    try:
+        db.delete(resume)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete resume: {str(e)}")
+
+    return {"detail": "Resume deleted", "id": resume_id}
+
+
+@router.post("/resumes/{resume_id}/analyze", response_model=ResumeAnalysisResponse)
+async def reanalyze_resume(resume_id: int, db: Session = Depends(get_db), http_request: Request = None):
+    """Re-analyze a stored resume using its extracted_text and persist the analysis JSON."""
+    user = get_current_user_from_request(http_request, db)
+    resume = crud.get_resume(db, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not resume.extracted_text or len((resume.extracted_text or "").strip()) < 10:
+        raise HTTPException(status_code=400, detail="Resume has no extracted text to analyze")
+
+    try:
+        result = resume_service.analyze_resume(
+            resume_text=resume.extracted_text,
+            job_title=None,
+            industry=None,
+        )
+        response = ResumeAnalysisResponse(
+            resume_id=resume.id,
+            overall_score=result.overall_score,
+            strengths=result.strengths,
+            weaknesses=result.weaknesses,
+            recommendations=result.recommendations,
+            summary=result.summary,
+            analysis_timestamp=result.analysis_timestamp,
+        )
+        try:
+            crud.save_resume_analysis(db, resume.id, response.dict())
+        except Exception:
+            # Non-fatal persistence error
+            pass
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Re-analysis failed: {str(e)}")
